@@ -42,31 +42,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    _initPedometer();
+    _pedometerService.initialize(); // Ensure permissions are requested and service starts
+    _pedometerService.stepsStream.listen((steps) {
+      if (mounted) setState(() => _currentSteps = steps);
+    });
   }
 
-  Future<void> _initPedometer() async {
-    bool granted = await _pedometerService.initialize();
-    if (granted) {
-      _pedometerService.stepsStream.listen((steps) {
-        if (mounted) {
-          setState(() {
-            _currentSteps = steps;
-          });
-        }
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _pedometerService.dispose();
-    _kcalController.dispose();
-    super.dispose();
-  }
-
-  // 1 beer = ~215 kcal. If 1 step = 0.04 kcal, then 1 beer = 5375 steps.
-  double get _stepsCalories => _currentSteps * 0.04;
+  double get _stepsCalories => (_currentSteps / 20.0);
   double get _totalBurned => widget.burned + _stepsCalories;
   double get _currentBalance => _totalBurned - widget.consumed;
   int get _beersAvailable => math.max(0, (_currentBalance / 215).floor());
@@ -79,6 +61,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          const Center(
+            child: Text(
+              "Yte for å Nyte",
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 28,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.5,
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
           _buildBeerCard(),
           const SizedBox(height: 20),
           _buildProgressCard(),
@@ -98,11 +92,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(32),
+        border: Border.all(color: Colors.blueAccent.withOpacity(0.2)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.blueAccent.withOpacity(0.1),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
@@ -110,41 +109,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       child: Column(
         children: [
-          const Text(
-            'TILGJENGELIGE HALVLITERE',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.2,
-              color: Colors.grey,
+          const Icon(Icons.sports_bar, size: 64, color: Colors.blueAccent),
+          const SizedBox(height: 16),
+          Text(
+            '$_beersAvailable',
+            style: const TextStyle(
+              fontSize: 64,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              letterSpacing: -2,
             ),
           ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _circleButton(Icons.remove, widget.onScanNyte),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 40),
-                child: Text(
-                  '$_beersAvailable',
-                  style: const TextStyle(
-                    fontSize: 84,
-                    fontWeight: FontWeight.w900,
-                    height: 1,
-                  ),
-                ),
-              ),
-              _circleButton(Icons.add, widget.onScanTrening),
-            ],
-          ),
-          const SizedBox(height: 16),
           const Text(
-            'Nyt med god samvittighet!',
+            'HALVLITERE TILGJENGELIG',
             style: TextStyle(
-              color: Colors.green,
-              fontWeight: FontWeight.w600,
-              fontSize: 15,
+              color: Colors.blueAccent,
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+              letterSpacing: 2,
+            ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton(
+            onPressed: widget.onScanNyte,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blueAccent,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              elevation: 0,
+            ),
+            child: const Text(
+              'REGISTRER NYTELSE',
+              style: TextStyle(fontWeight: FontWeight.w800),
             ),
           ),
         ],
@@ -152,66 +151,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _circleButton(IconData icon, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(30),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.black12),
-        ),
-        child: Icon(icon, size: 28),
-      ),
-    );
-  }
-
   Widget _buildProgressCard() {
-    int stepsToNext = (215 - (_currentBalance % 215)) ~/ 0.04;
+    int stepsToNext = ((215 - (_currentBalance % 215)) * 20).round();
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: const Color(0xFFF2B90D).withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFF2B90D).withOpacity(0.3)),
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Neste halvliter',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-              Text(
-                '${(_nextBeerProgress * 100).toInt()}%',
-                style: const TextStyle(
-                  color: Color(0xFFF2B90D),
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
+          const Text(
+            'NESTE ENHET',
+            style: TextStyle(
+              color: Colors.white60,
+              fontWeight: FontWeight.w800,
+              fontSize: 11,
+              letterSpacing: 1.2,
+            ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: LinearProgressIndicator(
               value: _nextBeerProgress,
               minHeight: 12,
-              backgroundColor: Colors.white,
+              backgroundColor: Colors.white.withOpacity(0.05),
               valueColor: const AlwaysStoppedAnimation<Color>(
-                Color(0xFFF2B90D),
+                Colors.blueAccent,
               ),
             ),
           ),
           const SizedBox(height: 12),
           Text(
-            'Bare $stepsToNext skritt igjen til en velfortjent 0.5L!',
-            style: TextStyle(
-              color: Colors.black.withOpacity(0.7),
+            'Bare $stepsToNext skritt igjen til neste!',
+            style: const TextStyle(
+              color: Colors.white70,
               fontSize: 13,
               fontWeight: FontWeight.w500,
             ),
@@ -223,57 +200,47 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildStepCard() {
     return Container(
-      width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Colors.white.withOpacity(0.05),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.black.withOpacity(0.05)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Skritt i dag',
+                'SKRITT I DAG',
                 style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black54,
+                  color: Colors.white60,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 11,
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text(
-                  '+12%',
-                  style: TextStyle(
-                    color: Colors.green,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
+              const SizedBox(height: 8),
+              Text(
+                '$_currentSteps',
+                style: const TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Text(
-            '$_currentSteps',
-            style: const TextStyle(
-              fontSize: 36,
-              fontWeight: FontWeight.w900,
-              letterSpacing: -1,
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.blueAccent.withOpacity(0.1),
+              shape: BoxShape.circle,
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Du har tjent $_currentSteps skritt så langt!',
-            style: const TextStyle(color: Colors.grey, fontSize: 13),
+            child: const Icon(
+              Icons.directions_walk,
+              color: Colors.blueAccent,
+              size: 28,
+            ),
           ),
         ],
       ),
@@ -281,81 +248,63 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildStatsRow() {
-    double distance = (_currentSteps * 0.7) / 1000.0;
     return Row(
       children: [
         Expanded(
-          child: _statSmallCard(
-            'Distanse',
-            '${distance.toStringAsFixed(1)}',
-            'km',
-            Icons.directions_walk,
-            Colors.blue,
+          child: _buildMiniStat(
+            'BRENT',
+            '${_totalBurned.round()} kcal',
+            Icons.local_fire_department,
+            Colors.orangeAccent,
           ),
         ),
-        const SizedBox(width: 15),
+        const SizedBox(width: 16),
         Expanded(
-          child: _statSmallCard(
-            'Kalorier',
-            '${_totalBurned.toInt()}',
-            'kcal',
-            Icons.local_fire_department,
-            Colors.orange,
+          child: _buildMiniStat(
+            'NYTT',
+            '${widget.consumed.round()} kcal',
+            Icons.restaurant,
+            Colors.blueAccent,
           ),
         ),
       ],
     );
   }
 
-  Widget _statSmallCard(
+  Widget _buildMiniStat(
     String label,
     String value,
-    String unit,
     IconData icon,
     Color color,
   ) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.black.withOpacity(0.05)),
+        color: Colors.white.withOpacity(0.03),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: color.withOpacity(0.1)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: color, size: 24),
+          Icon(icon, color: color, size: 20),
           const SizedBox(height: 12),
           Text(
             label,
             style: const TextStyle(
-              color: Colors.grey,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+              color: Colors.white60,
+              fontWeight: FontWeight.w800,
+              fontSize: 10,
             ),
           ),
           const SizedBox(height: 4),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                unit,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey,
-                ),
-              ),
-            ],
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+              fontSize: 18,
+            ),
           ),
         ],
       ),
@@ -366,92 +315,82 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Colors.white.withOpacity(0.05),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFF2B90D).withOpacity(0.2)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Text(
-            'REGISTRER TRENING',
+            'MANUELL REGISTRERING',
             style: TextStyle(
-              fontSize: 12,
+              color: Colors.white60,
               fontWeight: FontWeight.w800,
-              letterSpacing: 1.2,
-              color: Color(0xFFF2B90D),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'TJEN FLERE HALVLITERE VED Å FORBRENNE MER',
-            style: TextStyle(
               fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: Colors.black.withOpacity(0.4),
             ),
           ),
           const SizedBox(height: 20),
           DropdownButtonFormField<String>(
             value: _selectedActivity,
-            decoration: _inputDecoration('Aktivitetstype'),
-            items: _activities.map((String activity) {
-              return DropdownMenuItem(value: activity, child: Text(activity));
-            }).toList(),
-            onChanged: (val) {
-              setState(() {
-                _selectedActivity = val!;
-              });
-            },
+            dropdownColor: const Color(0xFF1E293B),
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: Colors.white.withOpacity(0.05),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide.none,
+              ),
+            ),
+            items: _activities
+                .map((a) => DropdownMenuItem(value: a, child: Text(a)))
+                .toList(),
+            onChanged: (v) => setState(() => _selectedActivity = v!),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           TextField(
             controller: _kcalController,
             keyboardType: TextInputType.number,
-            decoration: _inputDecoration('Kalorier (kcal)'),
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: 'Antall kcal',
+              hintStyle: const TextStyle(color: Colors.white30),
+              filled: true,
+              fillColor: Colors.white.withOpacity(0.05),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide.none,
+              ),
+            ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           ElevatedButton(
             onPressed: () {
-              final val = double.tryParse(_kcalController.text);
-              if (val != null) {
-                widget.onManualAdd(val, _selectedActivity);
+              final kcal = double.tryParse(_kcalController.text) ?? 0;
+              if (kcal > 0) {
+                widget.onManualAdd(kcal, _selectedActivity);
                 _kcalController.clear();
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Trening lagret!')),
+                  const SnackBar(content: Text('Aktivitet lagret!')),
                 );
               }
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFF2B90D),
+              backgroundColor: Colors.white.withOpacity(0.05),
               foregroundColor: Colors.white,
-              minimumSize: const Size(double.infinity, 56),
+              padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
-              elevation: 0,
+              side: BorderSide(color: Colors.white.withOpacity(0.1)),
             ),
             child: const Text(
-              'Lagre økt',
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+              'LEGG TIL AKTIVITET',
+              style: TextStyle(fontWeight: FontWeight.w800),
             ),
           ),
         ],
       ),
-    );
-  }
-
-  InputDecoration _inputDecoration(String label) {
-    return InputDecoration(
-      labelText: label,
-      labelStyle: const TextStyle(color: Colors.black54, fontSize: 14),
-      filled: true,
-      fillColor: Colors.grey.withOpacity(0.05),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide.none,
-      ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
     );
   }
 }

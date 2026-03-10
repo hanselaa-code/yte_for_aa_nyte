@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "740995128450",
+    "project_id": "ytnyt-cbdae",
+    "storage_bucket": "ytnyt-cbdae.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:740995128450:android:df71851b3ed761c57de89b",
+        "android_client_info": {
+          "package_name": "com.erikstein.yte_for_aa_nyte"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCEmO2nS4Tk-ZFtBsI42ccJEIlYOsGQXlg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

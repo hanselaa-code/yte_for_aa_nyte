@@ -1,11 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'firebase_options.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/log_screen.dart';
 import 'screens/profile_screen.dart';
-// import 'screens/scanner_screen.dart';
+import 'screens/login_screen.dart';
+import 'services/auth_service.dart';
+import 'services/notification_service.dart';
 import 'models/log_entry.dart';
+import 'dart:math' as math;
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await NotificationService().initialize();
   runApp(const YteForNyteApp());
 }
 
@@ -19,20 +28,28 @@ class YteForNyteApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFFF2B90D),
-          primary: const Color(0xFFF2B90D),
-          brightness: Brightness.light,
+          seedColor: const Color(0xFF0F172A),
+          primary: Colors.blueAccent,
+          brightness: Brightness.dark,
         ),
         useMaterial3: true,
         fontFamily: 'BeVietnamPro',
-        scaffoldBackgroundColor: const Color(0xFFF9FAFB),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFFF9FAFB),
-          elevation: 0,
-          foregroundColor: Colors.black,
-        ),
+        scaffoldBackgroundColor: const Color(0xFF0F172A),
       ),
-      home: const MainNavigation(),
+      home: StreamBuilder(
+        stream: AuthService().user,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (snapshot.hasData) {
+            return const MainNavigation();
+          }
+          return const LoginScreen();
+        },
+      ),
     );
   }
 }
@@ -46,7 +63,9 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
+  final PageController _pageController = PageController();
   final List<LogEntry> _logs = [];
+  int _previousBeers = 0;
 
   double get _burnedTotal => _logs
       .where((e) => e.type == LogType.yte)
@@ -58,12 +77,34 @@ class _MainNavigationState extends State<MainNavigation> {
 
   double get _balance => _burnedTotal - _consumedTotal;
 
-  void _addLog(double kcal, LogType type, [String? description]) {
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _addLog(double kcal, LogType type) async {
     setState(() {
       _logs.add(
         LogEntry(timestamp: DateTime.now(), calories: kcal, type: type),
       );
     });
+
+    // Check for new beer milestone
+    int currentBeers = math.max(0, (_balance / 215).floor());
+    if (currentBeers > _previousBeers) {
+      _previousBeers = currentBeers;
+
+      final prefs = await SharedPreferences.getInstance();
+      bool enabled = prefs.getBool('notifications_enabled') ?? true;
+
+      if (enabled) {
+        await NotificationService().showBeerMilestone(currentBeers);
+      }
+    } else {
+      // Also update previousBeers if it decreased (e.g. after drinking one)
+      _previousBeers = currentBeers;
+    }
   }
 
   void _addManualActivity(double kcal, String activity) {
@@ -76,7 +117,7 @@ class _MainNavigationState extends State<MainNavigation> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Skål! 🍺 Ny halvliter registrert.'),
-          backgroundColor: Color(0xFFF2B90D),
+          backgroundColor: Colors.blueAccent,
         ),
       );
     } else {
@@ -96,10 +137,7 @@ class _MainNavigationState extends State<MainNavigation> {
         balance: _balance,
         burned: _burnedTotal,
         consumed: _consumedTotal,
-        onScanTrening: () {
-          // In the new design, the + button can just be an informational or quick add
-          // For now, let's keep it as a placeholder or redirect to manual input
-        },
+        onScanTrening: () {},
         onScanNyte: _removeOneBeer,
         onManualAdd: _addManualActivity,
       ),
@@ -108,7 +146,15 @@ class _MainNavigationState extends State<MainNavigation> {
     ];
 
     return Scaffold(
-      body: IndexedStack(index: _currentIndex, children: screens),
+      body: PageView(
+        controller: _pageController,
+        onPageChanged: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        children: screens,
+      ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           boxShadow: [
@@ -118,12 +164,14 @@ class _MainNavigationState extends State<MainNavigation> {
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
           onTap: (index) {
-            setState(() {
-              _currentIndex = index;
-            });
+            _pageController.animateToPage(
+              index,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+            );
           },
           type: BottomNavigationBarType.fixed,
-          selectedItemColor: const Color(0xFFF2B90D),
+          selectedItemColor: Colors.blueAccent,
           unselectedItemColor: Colors.grey,
           showUnselectedLabels: true,
           items: const [
