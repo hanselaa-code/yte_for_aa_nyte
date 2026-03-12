@@ -47,10 +47,6 @@ class NotificationService {
         enableVibration: true,
         enableLights: true,
         showBadge: true,
-        audioAttributes: AudioAttributes(
-          usage: AudioAttributesUsage.notification,
-          contentType: AudioAttributesContentType.sonification,
-        ),
       );
 
       await _notificationsPlugin
