@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
-import '../services/pedometer_service.dart';
 import 'dart:math' as math;
 
 class DashboardScreen extends StatefulWidget {
   final double balance;
   final double burned;
   final double consumed;
+  final int steps;
+  final double beerKcal;
+  final String beerLabel;
   final VoidCallback onScanTrening;
   final VoidCallback onScanNyte;
   final Function(double kcal, String activity) onManualAdd;
@@ -15,6 +17,9 @@ class DashboardScreen extends StatefulWidget {
     required this.balance,
     required this.burned,
     required this.consumed,
+    required this.steps,
+    required this.beerKcal,
+    required this.beerLabel,
     required this.onScanTrening,
     required this.onScanNyte,
     required this.onManualAdd,
@@ -25,8 +30,6 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  final PedometerService _pedometerService = PedometerService();
-  int _currentSteps = 0;
   String _selectedActivity = 'Løping';
   final TextEditingController _kcalController = TextEditingController();
 
@@ -42,17 +45,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    _pedometerService.initialize(); // Ensure permissions are requested and service starts
-    _pedometerService.stepsStream.listen((steps) {
-      if (mounted) setState(() => _currentSteps = steps);
-    });
   }
 
-  double get _stepsCalories => (_currentSteps / 20.0);
+  double get _stepsCalories => (widget.steps / 20.0);
   double get _totalBurned => widget.burned + _stepsCalories;
   double get _currentBalance => _totalBurned - widget.consumed;
-  int get _beersAvailable => math.max(0, (_currentBalance / 215).floor());
-  double get _nextBeerProgress => (_currentBalance % 215) / 215.0;
+  int get _beersAvailable => math.max(0, (_currentBalance / widget.beerKcal).floor());
+  double get _nextBeerProgress => (_currentBalance % widget.beerKcal) / widget.beerKcal;
 
   @override
   Widget build(BuildContext context) {
@@ -120,9 +119,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
               letterSpacing: -2,
             ),
           ),
-          const Text(
-            'HALVLITERE TILGJENGELIG',
-            style: TextStyle(
+          Text(
+            widget.beerLabel.toUpperCase(),
+            style: const TextStyle(
               color: Colors.blueAccent,
               fontWeight: FontWeight.w800,
               fontSize: 12,
@@ -152,7 +151,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildProgressCard() {
-    int stepsToNext = ((215 - (_currentBalance % 215)) * 20).round();
+    int stepsToNext = ((widget.beerKcal - (_currentBalance % widget.beerKcal)) * 20).round();
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -221,7 +220,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                '$_currentSteps',
+                '${widget.steps}',
                 style: const TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.w900,

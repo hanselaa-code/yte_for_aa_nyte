@@ -5,7 +5,12 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   // Internal user stream
-  Stream<User?> get user => _auth.authStateChanges();
+  Stream<User?> get user {
+    return _auth.authStateChanges().map((user) {
+      print("AuthService: Auth state changed. User: ${user?.uid ?? 'Logged out'}");
+      return user;
+    });
+  }
 
   // Sign up with email and password
   Future<UserCredential?> signUp(String email, String password) async {

@@ -1,20 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'dart:math' as math;
+
 import 'firebase_options.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/log_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/login_screen.dart';
 import 'services/auth_service.dart';
+import 'services/storage_service.dart';
 import 'services/notification_service.dart';
+import 'services/pedometer_service.dart';
 import 'models/log_entry.dart';
-import 'dart:math' as math;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await NotificationService().initialize();
+  await initializeDateFormatting('nb_NO', null);
   runApp(const YteForNyteApp());
 }
 
@@ -64,18 +69,44 @@ class MainNavigation extends StatefulWidget {
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
   final PageController _pageController = PageController();
-  final List<LogEntry> _logs = [];
+  final StorageService _storageService = StorageService();
+  final PedometerService _pedometerService = PedometerService();
   int _previousBeers = 0;
+  int _currentSteps = 0;
+  double _beerKcal = 215.0; // Default 0.5L
+  List<LogEntry> _lastLogs = [];
 
-  double get _burnedTotal => _logs
-      .where((e) => e.type == LogType.yte)
-      .fold(0, (sum, e) => sum + e.calories);
+  @override
+  void initState() {
+    super.initState();
+    _loadPreviousBeers();
+    _pedometerService.initialize();
+    _pedometerService.stepsStream.listen((steps) {
+      if (mounted) {
+        setState(() {
+          _currentSteps = steps;
+        });
+        _checkMilestones(_lastLogs);
+      }
+    });
+  }
 
-  double get _consumedTotal => _logs
-      .where((e) => e.type == LogType.nyte)
-      .fold(0, (sum, e) => sum + e.calories);
+  Future<void> _loadPreviousBeers() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _previousBeers = prefs.getInt('previous_beers') ?? 0;
+        double size = prefs.getDouble('selected_beer_size') ?? 0.5;
+        _beerKcal = (size * 430.0); // 43 kcal per 100ml -> 430 kcal per liter
+      });
+      print("MainNavigation: Loaded previous beers count: $_previousBeers, beer size kcal: $_beerKcal");
+    }
+  }
 
-  double get _balance => _burnedTotal - _consumedTotal;
+  Future<void> _savePreviousBeers(int count) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('previous_beers', count);
+  }
 
   @override
   void dispose() {
@@ -84,26 +115,44 @@ class _MainNavigationState extends State<MainNavigation> {
   }
 
   void _addLog(double kcal, LogType type) async {
-    setState(() {
-      _logs.add(
-        LogEntry(timestamp: DateTime.now(), calories: kcal, type: type),
-      );
-    });
+    final entry = LogEntry(
+      timestamp: DateTime.now(),
+      calories: kcal,
+      type: type,
+    );
+    await _storageService.addLog(entry);
+  }
 
-    // Check for new beer milestone
-    int currentBeers = math.max(0, (_balance / 215).floor());
+  void _checkMilestones(List<LogEntry> logs) async {
+    _lastLogs = logs;
+    double burnedFromLogs = logs
+        .where((e) => e.type == LogType.yte)
+        .fold(0, (sum, e) => sum + e.calories);
+
+    double burnedFromSteps = _currentSteps / 20.0;
+
+    double consumedTotal = logs
+        .where((e) => e.type == LogType.nyte)
+        .fold(0, (sum, e) => sum + e.calories);
+
+    double balance = (burnedFromLogs + burnedFromSteps) - consumedTotal;
+
+    int currentBeers = math.max(0, (balance / _beerKcal).floor());
+
     if (currentBeers > _previousBeers) {
+      print("MainNavigation: Milestone reached! $currentBeers beers (Prev: $_previousBeers)");
       _previousBeers = currentBeers;
+      _savePreviousBeers(currentBeers);
 
       final prefs = await SharedPreferences.getInstance();
       bool enabled = prefs.getBool('notifications_enabled') ?? true;
-
       if (enabled) {
+        print("MainNavigation: Showing notification for beer #$currentBeers");
         await NotificationService().showBeerMilestone(currentBeers);
       }
-    } else {
-      // Also update previousBeers if it decreased (e.g. after drinking one)
+    } else if (currentBeers < _previousBeers) {
       _previousBeers = currentBeers;
+      _savePreviousBeers(currentBeers);
     }
   }
 
@@ -111,19 +160,32 @@ class _MainNavigationState extends State<MainNavigation> {
     _addLog(kcal, LogType.yte);
   }
 
-  void _removeOneBeer() {
-    if (_balance >= 215) {
-      _addLog(215, LogType.nyte);
+  void _removeOneBeer(double currentBalance) {
+    if (currentBalance >= _beerKcal) {
+      _addLog(_beerKcal, LogType.nyte);
+      
+      double size = (_beerKcal / 430.0).toDouble();
+      String label = 'enhet';
+      if (size > 0.32 && size < 0.34) label = 'småboks';
+      if (size > 0.39 && size < 0.41) label = 'enhet';
+      if (size > 0.49 && size < 0.51) label = 'halvliter';
+      if (size > 0.59 && size < 0.61) label = 'stor enhet';
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Skål! 🍺 Ny halvliter registrert.'),
+        SnackBar(
+          content: Text('Skål! 🍺 Ny $label registrert.'),
           backgroundColor: Colors.blueAccent,
         ),
       );
     } else {
+      double size = _beerKcal / 430.0;
+      String label = 'enhet';
+      if (size > 0.49 && size < 0.51) label = 'halvliter';
+      if (size > 0.32 && size < 0.34) label = 'småboks';
+      
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Du har ikke tjent nok til en halvliter ennå!'),
+        SnackBar(
+          content: Text('Du har ikke tjent nok til en $label ennå!'),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -132,67 +194,117 @@ class _MainNavigationState extends State<MainNavigation> {
 
   @override
   Widget build(BuildContext context) {
-    final List<Widget> screens = [
-      DashboardScreen(
-        balance: _balance,
-        burned: _burnedTotal,
-        consumed: _consumedTotal,
-        onScanTrening: () {},
-        onScanNyte: _removeOneBeer,
-        onManualAdd: _addManualActivity,
-      ),
-      LogScreen(logs: _logs),
-      const ProfileScreen(),
-    ];
+    return StreamBuilder<List<LogEntry>>(
+      stream: _storageService.getLogs(),
+      builder: (context, snapshot) {
+        final List<LogEntry> logs = snapshot.data ?? [];
+        _lastLogs = logs;
 
-    return Scaffold(
-      body: PageView(
-        controller: _pageController,
-        onPageChanged: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-        children: screens,
-      ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10),
-          ],
-        ),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: (index) {
-            _pageController.animateToPage(
-              index,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-            );
-          },
-          type: BottomNavigationBarType.fixed,
-          selectedItemColor: Colors.blueAccent,
-          unselectedItemColor: Colors.grey,
-          showUnselectedLabels: true,
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              activeIcon: Icon(Icons.home),
-              label: 'Oversikt',
+        if (snapshot.hasData) {
+          _checkMilestones(logs);
+        }
+
+        final DateTime now = DateTime.now();
+        final DateTime today = DateTime(now.year, now.month, now.day);
+
+        final List<LogEntry> todayLogs = logs.where((e) {
+          final DateTime logDate = DateTime(
+            e.timestamp.year,
+            e.timestamp.month,
+            e.timestamp.day,
+          );
+          return logDate.isAtSameMomentAs(today);
+        }).toList();
+
+        double burnedToday = todayLogs
+            .where((e) => e.type == LogType.yte)
+            .fold(0, (sum, e) => sum + e.calories);
+
+        double consumedToday = todayLogs
+            .where((e) => e.type == LogType.nyte)
+            .fold(0, (sum, e) => sum + e.calories);
+
+        double balanceToday = (burnedToday + (_currentSteps / 20.0)) - consumedToday;
+
+        double size = (_beerKcal / 430.0);
+        String currentLabel = 'ENHETER TILGJENGELIG';
+        if (size > 0.32 && size < 0.34) currentLabel = 'SMÅBOKSER TILGJENGELIG';
+        if (size > 0.49 && size < 0.51) currentLabel = 'HALVLITERE TILGJENGELIG';
+        if (size > 0.59 && size < 0.61) currentLabel = 'STORE ENHETER TILGJENGELIG';
+
+        final List<Widget> screens = [
+          DashboardScreen(
+            balance: balanceToday,
+            burned: burnedToday,
+            consumed: consumedToday,
+            steps: _currentSteps,
+            beerKcal: _beerKcal,
+            beerLabel: currentLabel,
+            onScanTrening: () {},
+            onScanNyte: () {
+              // Reload size right before registration to be sure
+              _loadPreviousBeers();
+              _removeOneBeer(balanceToday);
+            },
+            onManualAdd: _addManualActivity,
+          ),
+          LogScreen(logs: logs),
+          ProfileScreen(onSettingsChanged: _loadPreviousBeers),
+        ];
+
+        return Scaffold(
+          body: PageView(
+            controller: _pageController,
+            onPageChanged: (index) {
+              setState(() {
+                _currentIndex = index;
+              });
+            },
+            children: screens,
+          ),
+          bottomNavigationBar: Container(
+            decoration: BoxDecoration(
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                ),
+              ],
             ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.receipt_long_outlined),
-              activeIcon: Icon(Icons.receipt_long),
-              label: 'Historikk',
+            child: BottomNavigationBar(
+              currentIndex: _currentIndex,
+              onTap: (index) {
+                _pageController.animateToPage(
+                  index,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                );
+              },
+              type: BottomNavigationBarType.fixed,
+              selectedItemColor: Colors.blueAccent,
+              unselectedItemColor: Colors.grey,
+              showUnselectedLabels: true,
+              items: const [
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.home_outlined),
+                  activeIcon: Icon(Icons.home),
+                  label: 'Oversikt',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.receipt_long_outlined),
+                  activeIcon: Icon(Icons.receipt_long),
+                  label: 'Historikk',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.person_outline),
+                  activeIcon: Icon(Icons.person),
+                  label: 'Profil',
+                ),
+              ],
             ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline),
-              activeIcon: Icon(Icons.person),
-              label: 'Profil',
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }

@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
+import '../services/notification_service.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final VoidCallback? onSettingsChanged;
+  const ProfileScreen({super.key, this.onSettingsChanged});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -12,6 +14,14 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _notificationsEnabled = true;
+  double _selectedBeerSize = 0.5;
+
+  final Map<double, String> _beerSizes = {
+    0.33: '0.33L',
+    0.4: '0.4L',
+    0.5: '0.5L (standard)',
+    0.6: '0.6L',
+  };
 
   @override
   void initState() {
@@ -23,6 +33,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _notificationsEnabled = prefs.getBool('notifications_enabled') ?? true;
+      _selectedBeerSize = prefs.getDouble('selected_beer_size') ?? 0.5;
     });
   }
 
@@ -32,6 +43,66 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() {
       _notificationsEnabled = value;
     });
+    widget.onSettingsChanged?.call();
+  }
+
+  Future<void> _updateBeerSize(double value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('selected_beer_size', value);
+    setState(() {
+      _selectedBeerSize = value;
+    });
+    widget.onSettingsChanged?.call();
+  }
+
+  void _showBeerSizePicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E293B),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'VELG ØL-STØRRELSE',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const SizedBox(height: 24),
+              ..._beerSizes.entries.map((entry) {
+                final isSelected = _selectedBeerSize == entry.key;
+                return ListTile(
+                  title: Text(
+                    entry.value,
+                    style: TextStyle(
+                      color: isSelected ? Colors.blueAccent : Colors.white,
+                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
+                    ),
+                  ),
+                  trailing: isSelected
+                      ? const Icon(Icons.check_circle, color: Colors.blueAccent)
+                      : null,
+                  onTap: () {
+                    _updateBeerSize(entry.key);
+                    Navigator.pop(context);
+                  },
+                );
+              }),
+              const SizedBox(height: 24),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -102,12 +173,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _notificationsEnabled,
               _toggleNotifications,
             ),
-            _buildSettingTile(
-              Icons.sports_bar_outlined,
-              'Øl-størrelse',
-              '0.5L (standard)',
+            GestureDetector(
+              onTap: _showBeerSizePicker,
+              child: _buildSettingTile(
+                Icons.sports_bar_outlined,
+                'Øl-størrelse',
+                _beerSizes[_selectedBeerSize] ?? '0.5L (standard)',
+              ),
             ),
             _buildSettingTile(Icons.language, 'Språk', 'Norsk'),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: () {
+                NotificationService().testNotification();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Sender testvarsel... sjekk toppen av skjermen!'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.notifications_active),
+              label: const Text('TEST VARSEL (PLIING)'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blueAccent.withOpacity(0.1),
+                foregroundColor: Colors.blueAccent,
+                minimumSize: const Size(double.infinity, 50),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+            ),
             const SizedBox(height: 40),
             ElevatedButton(
               onPressed: () => auth.signOut(),

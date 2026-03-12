@@ -7,8 +7,27 @@ class LogScreen extends StatelessWidget {
 
   const LogScreen({super.key, required this.logs});
 
+  Map<String, List<LogEntry>> _groupLogsByDay() {
+    final Map<String, List<LogEntry>> grouped = {};
+    for (var log in logs) {
+      final dateStr = DateFormat(
+        'EEEE, d. MMMM yyyy',
+        'nb_NO',
+      ).format(log.timestamp);
+      if (grouped.containsKey(dateStr)) {
+        grouped[dateStr]!.add(log);
+      } else {
+        grouped[dateStr] = [log];
+      }
+    }
+    return grouped;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final groupedLogs = _groupLogsByDay();
+    final dates = groupedLogs.keys.toList();
+
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       appBar: AppBar(
@@ -33,77 +52,99 @@ class LogScreen extends StatelessWidget {
             )
           : ListView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              itemCount: logs.length,
+              itemCount: dates.length,
               itemBuilder: (context, index) {
-                final log = logs[logs.length - 1 - index];
-                final isYte = log.type == LogType.yte;
+                final date = dates[index];
+                final dayLogs = groupedLogs[date]!;
 
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.03),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: isYte
-                          ? Colors.blueAccent.withOpacity(0.1)
-                          : Colors.orangeAccent.withOpacity(0.1),
+                double dayBurned = dayLogs
+                    .where((e) => e.type == LogType.yte)
+                    .fold(0, (sum, e) => sum + e.calories);
+                double dayConsumed = dayLogs
+                    .where((e) => e.type == LogType.nyte)
+                    .fold(0, (sum, e) => sum + e.calories);
+
+                return Theme(
+                  data: Theme.of(
+                    context,
+                  ).copyWith(dividerColor: Colors.transparent),
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.03),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.white.withOpacity(0.05)),
                     ),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color:
-                              (isYte ? Colors.blueAccent : Colors.orangeAccent)
-                                  .withOpacity(0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          isYte ? Icons.fitness_center : Icons.sports_bar,
-                          color: isYte
-                              ? Colors.blueAccent
-                              : Colors.orangeAccent,
-                          size: 20,
+                    child: ExpansionTile(
+                      title: Text(
+                        date.toUpperCase(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
                         ),
                       ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              isYte ? 'Treningsøkt' : 'Halvliter nytt',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
+                      subtitle: Text(
+                        'Totalt: +${dayBurned.round()} / -${dayConsumed.round()} kcal',
+                        style: const TextStyle(
+                          color: Colors.white60,
+                          fontSize: 11,
+                        ),
+                      ),
+                      iconColor: Colors.blueAccent,
+                      collapsedIconColor: Colors.white60,
+                      children: dayLogs.map((log) {
+                        final isYte = log.type == LogType.yte;
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                isYte ? Icons.fitness_center : Icons.sports_bar,
+                                color: isYte
+                                    ? Colors.blueAccent
+                                    : Colors.orangeAccent,
+                                size: 18,
                               ),
-                            ),
-                            Text(
-                              DateFormat(
-                                'dd. MMM, HH:mm',
-                              ).format(log.timestamp),
-                              style: const TextStyle(
-                                color: Colors.white60,
-                                fontSize: 12,
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      isYte ? 'Treningsøkt' : 'Halvliter nytt',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    Text(
+                                      DateFormat('HH:mm').format(log.timestamp),
+                                      style: const TextStyle(
+                                        color: Colors.white54,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Text(
-                        '${isYte ? '+' : '-'}${log.calories.round()} kcal',
-                        style: TextStyle(
-                          color: isYte
-                              ? Colors.blueAccent
-                              : Colors.orangeAccent,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ],
+                              Text(
+                                '${isYte ? '+' : '-'}${log.calories.round()} kcal',
+                                style: TextStyle(
+                                  color: isYte
+                                      ? Colors.blueAccent
+                                      : Colors.orangeAccent,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ),
                   ),
                 );
               },
