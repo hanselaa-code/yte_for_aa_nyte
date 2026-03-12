@@ -140,16 +140,25 @@ class _MainNavigationState extends State<MainNavigation> {
     int currentBeers = math.max(0, (balance / _beerKcal).floor());
 
     if (currentBeers > _previousBeers) {
-      print("MainNavigation: Milestone reached! $currentBeers beers (Prev: $_previousBeers)");
-      _previousBeers = currentBeers;
-      _savePreviousBeers(currentBeers);
+      int newBeersCount = currentBeers - _previousBeers;
+      print("MainNavigation: Milestone reached! $currentBeers beers (Prev: $_previousBeers, New: $newBeersCount)");
 
       final prefs = await SharedPreferences.getInstance();
       bool enabled = prefs.getBool('notifications_enabled') ?? true;
-      if (enabled) {
-        print("MainNavigation: Showing notification for beer #$currentBeers");
-        await NotificationService().showBeerMilestone(currentBeers);
+
+      // Trigger a notification for EACH new beer earned
+      for (int i = 1; i <= newBeersCount; i++) {
+        int beerNum = _previousBeers + i;
+        if (enabled) {
+          print("MainNavigation: Showing notification for beer #$beerNum");
+          await NotificationService().showBeerMilestone(beerNum);
+          // Small delay between notifications to avoid system flooding/overlap
+          if (newBeersCount > 1) await Future.delayed(const Duration(milliseconds: 500));
+        }
       }
+
+      _previousBeers = currentBeers;
+      _savePreviousBeers(currentBeers);
     } else if (currentBeers < _previousBeers) {
       _previousBeers = currentBeers;
       _savePreviousBeers(currentBeers);
@@ -248,7 +257,10 @@ class _MainNavigationState extends State<MainNavigation> {
             },
             onManualAdd: _addManualActivity,
           ),
-          LogScreen(logs: logs),
+          LogScreen(
+            logs: logs,
+            onDelete: (id) => _storageService.deleteLogEntry(id),
+          ),
           ProfileScreen(onSettingsChanged: _loadPreviousBeers),
         ];
 

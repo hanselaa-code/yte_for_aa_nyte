@@ -89,7 +89,7 @@ class NotificationService {
       await _notificationsPlugin.show(
         beerNumber,
         'SKÅL! 🍻',
-        'Du har nå tjent opp til en ny enhet! Fantastisk innsats!',
+        'Du har nå fortjent en ny enhet! Fantastisk innsats! 🎉',
         details,
       );
       debugPrint("NotificationService: Successfully triggered show()");

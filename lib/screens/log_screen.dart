@@ -4,8 +4,9 @@ import '../models/log_entry.dart';
 
 class LogScreen extends StatelessWidget {
   final List<LogEntry> logs;
+  final Function(String id)? onDelete;
 
-  const LogScreen({super.key, required this.logs});
+  const LogScreen({super.key, required this.logs, this.onDelete});
 
   Map<String, List<LogEntry>> _groupLogsByDay() {
     final Map<String, List<LogEntry>> grouped = {};
@@ -21,6 +22,33 @@ class LogScreen extends StatelessWidget {
       }
     }
     return grouped;
+  }
+
+  Future<void> _showDeleteDialog(BuildContext context, LogEntry log) async {
+    return showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: const Text('Slett aktivitet?', style: TextStyle(color: Colors.white)),
+        content: const Text(
+          'Er du sikker på at du vil slette denne aktiviteten? Dette kan ikke angres.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('AVBRYT', style: TextStyle(color: Colors.white60)),
+          ),
+          TextButton(
+            onPressed: () {
+              onDelete?.call(log.id!);
+              Navigator.pop(context);
+            },
+            child: const Text('SLETT', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -115,7 +143,7 @@ class LogScreen extends StatelessWidget {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      isYte ? 'Treningsøkt' : 'Halvliter nytt',
+                                      isYte ? 'Treningsøkt' : 'Enhet registrert',
                                       style: const TextStyle(
                                         color: Colors.white,
                                         fontSize: 14,
@@ -139,6 +167,14 @@ class LogScreen extends StatelessWidget {
                                       : Colors.orangeAccent,
                                   fontWeight: FontWeight.bold,
                                 ),
+                              ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  color: Colors.white24,
+                                  size: 20,
+                                ),
+                                onPressed: () => _showDeleteDialog(context, log),
                               ),
                             ],
                           ),

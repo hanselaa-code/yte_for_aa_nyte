@@ -62,4 +62,14 @@ class StorageService {
           }).toList();
         });
   }
+
+  Future<void> deleteLogEntry(String id) async {
+    try {
+      await _logsRef.doc(id).delete();
+      print("StorageService: Deleted log with ID: $id");
+    } catch (e) {
+      print("StorageService: Error deleting log: $e");
+      rethrow;
+    }
+  }
 }
