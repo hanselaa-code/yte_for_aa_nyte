@@ -73,6 +73,7 @@ class _MainNavigationState extends State<MainNavigation> {
   final PedometerService _pedometerService = PedometerService();
   int _previousBeers = 0;
   int _currentSteps = 0;
+  bool _settingsLoaded = false; // Added this line
   double _beerKcal = 215.0; // Default 0.5L
   List<LogEntry> _lastLogs = [];
 
@@ -98,6 +99,7 @@ class _MainNavigationState extends State<MainNavigation> {
         _previousBeers = prefs.getInt('previous_beers') ?? 0;
         double size = prefs.getDouble('selected_beer_size') ?? 0.5;
         _beerKcal = (size * 430.0); // 43 kcal per 100ml -> 430 kcal per liter
+        _settingsLoaded = true;
       });
       print("MainNavigation: Loaded previous beers count: $_previousBeers, beer size kcal: $_beerKcal");
     }
@@ -125,6 +127,10 @@ class _MainNavigationState extends State<MainNavigation> {
 
   void _checkMilestones(List<LogEntry> logs) async {
     _lastLogs = logs;
+    if (!_settingsLoaded) {
+      print("MainNavigation: Skipping milestone check, settings not loaded yet");
+      return;
+    }
     double burnedFromLogs = logs
         .where((e) => e.type == LogType.yte)
         .fold(0, (sum, e) => sum + e.calories);

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -9,7 +10,14 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
+  bool _isInitialized = false;
+
   Future<void> initialize() async {
+    if (_isInitialized) return;
+
+    debugPrint("NotificationService: Initializing...");
+
+    // 1. Android settings
     const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('launcher_icon');
 
@@ -17,25 +25,32 @@ class NotificationService {
         InitializationSettings(android: initializationSettingsAndroid);
 
     try {
-      // 1. Initialize the plugin
-      await _notificationsPlugin.initialize(
+      // 2. Initialize the plugin
+      bool? initialized = await _notificationsPlugin.initialize(
         initializationSettings,
         onDidReceiveNotificationResponse: (details) {
           debugPrint("Notification tapped: ${details.payload}");
         },
       );
+      
+      debugPrint("NotificationService: Plugin initialized: $initialized");
 
-      // 2. Create the notification channel (Android 8.0+)
+      // 3. Create the notification channel (Android 8.0+)
+      // Using v8 to force a fresh channel with sound enabled
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
-        'beer_alerts_v7', // Fresh ID for sound
-        'Øl-varsler',
-        description: 'Varsler når du har fortjent en ny øl',
+        'beer_alerts_v8', 
+        'Øl-varsler (Viktig)',
+        description: 'Varsler med lyd når du har fortjent en ny øl',
         importance: Importance.max,
         playSound: true,
         sound: RawResourceAndroidNotificationSound('beer_pling'),
         enableVibration: true,
         enableLights: true,
         showBadge: true,
+        audioAttributes: AudioAttributes(
+          usage: AudioAttributesUsage.notification,
+          contentType: AudioAttributesContentType.sonification,
+        ),
       );
 
       await _notificationsPlugin
@@ -44,12 +59,30 @@ class NotificationService {
           >()
           ?.createNotificationChannel(channel);
 
-      debugPrint("NotificationService: Initialized successfully with v7 channel");
+      _isInitialized = true;
+      debugPrint("NotificationService: Initialized successfully with v8 channel");
     } catch (e) {
       debugPrint("NotificationService: Initialization error: $e");
     }
 
-    // Request permissions for Android 13+
+    // 4. Handle Permissions (especially for Android 13+)
+    await requestPermissions();
+  }
+
+  Future<void> requestPermissions() async {
+    debugPrint("NotificationService: Checking permissions...");
+    
+    // Check status using permission_handler
+    var status = await Permission.notification.status;
+    debugPrint("NotificationService: Current status: $status");
+
+    if (status.isDenied || status.isPermanentlyDenied) {
+      debugPrint("NotificationService: Requesting permission explicitly...");
+      status = await Permission.notification.request();
+      debugPrint("NotificationService: New status after request: $status");
+    }
+
+    // Also call the plugin's internal request to be safe
     try {
       final bool? granted =
           await _notificationsPlugin
@@ -57,42 +90,53 @@ class NotificationService {
                 AndroidFlutterLocalNotificationsPlugin
               >()
               ?.requestNotificationsPermission();
-      debugPrint("NotificationService: Permissions granted: $granted");
+      debugPrint("NotificationService: Plugin-reported granted: $granted");
     } catch (e) {
-      debugPrint("NotificationService: Permission error: $e");
+      debugPrint("NotificationService: Plugin permission error: $e");
     }
   }
 
   Future<void> showBeerMilestone(int beerNumber) async {
+    if (!_isInitialized) await initialize();
+
     try {
       debugPrint("NotificationService: Attempting to show milestone #$beerNumber");
-      const AndroidNotificationDetails androidDetails =
+      
+      final String title = 'SKÅL! 🍻';
+      final String body = 'Du har nå fortjent en ny enhet! Fantastisk innsats! 🎉';
+
+      final AndroidNotificationDetails androidDetails =
           AndroidNotificationDetails(
-            'beer_alerts_v7',
-            'Øl-varsler',
-            channelDescription: 'Varsler når du har fortjent en ny øl',
+            'beer_alerts_v8',
+            'Øl-varsler (Viktig)',
+            channelDescription: 'Varsler med lyd når du har fortjent en ny øl',
             importance: Importance.max,
-            priority: Priority.high,
+            priority: Priority.max,
             playSound: true,
-            sound: RawResourceAndroidNotificationSound('beer_pling'),
+            sound: const RawResourceAndroidNotificationSound('beer_pling'),
             ticker: 'Skål! 🍻',
             icon: 'launcher_icon',
             enableVibration: true,
             enableLights: true,
             audioAttributesUsage: AudioAttributesUsage.notification,
+            styleInformation: BigTextStyleInformation(
+              body,
+              contentTitle: title,
+              summaryText: 'Ny øl tjent!',
+            ),
           );
 
-      const NotificationDetails details = NotificationDetails(
+      final NotificationDetails details = NotificationDetails(
         android: androidDetails,
       );
 
       await _notificationsPlugin.show(
         beerNumber,
-        'SKÅL! 🍻',
-        'Du har nå fortjent en ny enhet! Fantastisk innsats! 🎉',
+        title,
+        body,
         details,
       );
-      debugPrint("NotificationService: Successfully triggered show()");
+      debugPrint("NotificationService: Successfully triggered show() for beer #$beerNumber");
     } catch (e) {
       debugPrint("NotificationService: Error in showBeerMilestone: $e");
     }
@@ -100,11 +144,11 @@ class NotificationService {
 
   Future<void> showSimpleNotification() async {
     try {
-      debugPrint("NotificationService: Attempting to show simple notification");
+      debugPrint("NotificationService: Showing fallback test notification");
       const AndroidNotificationDetails androidDetails =
           AndroidNotificationDetails(
-            'simple_notifications',
-            'Simple Notifications',
+            'general_alerts',
+            'Generelle varsler',
             importance: Importance.max,
             priority: Priority.high,
             ticker: 'Test',
@@ -116,29 +160,21 @@ class NotificationService {
 
       await _notificationsPlugin.show(
         999,
-        'Test Varsel',
-        'Dette er et enkelt testvarsel uten lydfil.',
+        'Prøvevarsel felles',
+        'Dette er et testvarsel uten spesial-lyd.',
         details,
       );
-      debugPrint("NotificationService: Successfully triggered simple show()");
     } catch (e) {
-      debugPrint("NotificationService: Error in showSimpleNotification: $e");
+      debugPrint("NotificationService: Error in simple notification: $e");
     }
   }
 
   Future<void> testNotification() async {
-    debugPrint("NotificationService: testNotification starting");
-    
-    // Request permissions again just in case
-    await _notificationsPlugin
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >()
-        ?.requestNotificationsPermission();
-
+    debugPrint("NotificationService: Starting manual test...");
+    await requestPermissions();
     await showBeerMilestone(1);
     
-    // If the above fails or is silent, this one uses default settings
-    Future.delayed(const Duration(seconds: 3), () => showSimpleNotification());
+    // Fallback if the main one fails
+    Future.delayed(const Duration(seconds: 4), () => showSimpleNotification());
   }
 }
