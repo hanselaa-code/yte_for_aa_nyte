@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'dart:math' as math;
+import 'package:audioplayers/audioplayers.dart';
 
 import 'firebase_options.dart';
 import 'screens/dashboard_screen.dart';
@@ -76,6 +77,7 @@ class _MainNavigationState extends State<MainNavigation> {
   bool _settingsLoaded = false; // Added this line
   double _beerKcal = 215.0; // Default 0.5L
   List<LogEntry> _lastLogs = [];
+  final AudioPlayer _audioPlayer = AudioPlayer();
 
   @override
   void initState() {
@@ -178,6 +180,9 @@ class _MainNavigationState extends State<MainNavigation> {
   void _removeOneBeer(double currentBalance) {
     if (currentBalance >= _beerKcal) {
       _addLog(_beerKcal, LogType.nyte);
+      
+      // Play local sound
+      _audioPlayer.play(AssetSource('sounds/beer_pling.mp3'));
       
       double size = (_beerKcal / 430.0).toDouble();
       String label = 'enhet';
